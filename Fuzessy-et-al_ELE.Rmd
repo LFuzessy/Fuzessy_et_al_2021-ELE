@@ -1,0 +1,1029 @@
+---
+title: " Phylogenetic congruence between Neotropical primates and plants is driven by frugivory"
+author: "L Fuzessy, FAO Silveira, L Culot, P Jordano & M Verdú"
+date: "11/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load packages
+
+```{r load.packs, include=FALSE}
+library(phytools)
+library(igraph)
+library(ape)
+library(picante)
+library(dplyr)
+library(paco)
+library(ggplot2)
+
+```
+
+# Input interaction dataset 
+
+```{r data.input, include=FALSE}
+
+# Raw interaction dataset for Atlantic network.
+int_data<- 
+  read.table("./interaction_data.txt", 
+             na="NA", sep="\t", dec=".", header= TRUE)
+
+
+```
+
+
+# Edge lists to interaction matrices
+
+## Genus level
+```{r edge.to.interact.gen, include=FALSE}
+
+# Interaction datasets.
+
+
+int_data %>%                      # Primates: 39 species
+  dplyr::select(primate) %>%
+  group_by(primate) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+int_data %>%                      # Plants: 312 genus
+  dplyr::select(genus) %>%
+  group_by(genus) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+
+# List of distinct pairwise interactions (edge list).
+el_int_data.gen<- int_data %>%
+  dplyr::select(primate,genus) %>%
+  dplyr::filter(!is.na(primate)) %>%
+  dplyr::group_by(primate,genus) %>%
+  dplyr::summarise(n_distinct(primate))
+
+```
+
+## Species level
+```{r edge.to.interact.spp, include=FALSE}
+
+# Interaction datasets.
+
+
+int_data %>%                      # Primates: 39 species
+  dplyr::select(primate) %>%
+  group_by(primate) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+int_data %>%                      # Plants: 964 plant
+  dplyr::select(plant) %>%
+  group_by(plant) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+# List of distinct pairwise interactions (edge list).
+el_int_data.sp<- int_data %>%
+  dplyr::select(primate,plant) %>%
+  dplyr::filter(!is.na(primate)) %>%
+  dplyr::group_by(primate,plant) %>%
+  dplyr::summarise(n_distinct(primate))
+
+
+
+```
+
+
+# Create djacency matrices
+
+## Plants at genus level
+
+```{r adj.mat.gen, include=FALSE}
+
+# Graph from edge list
+int_data_g<- igraph::graph.data.frame(el_int_data.gen[,1:2], directed=FALSE)
+V(int_data_g)$type <- V(int_data_g)$name %in% el_int_data.gen[,1]
+is.bipartite(int_data_g)
+
+int_data.mat.gen <- igraph::as_adjacency_matrix(int_data_g, type="both", names=T, sparse=F)
+
+#Subset the adjacency matrix: primates as columns, plants as rows
+int_data.mat.gen<- data.frame(int_data.mat.gen[1:39,40:351])
+#write.csv(int_data.mat.gen, file= "interactions_gen.csv")
+#Average number of interactions per species
+(I.gen=sum(int_data.mat.gen!=0)) #Total number of interactions = 1060
+(I.animals.gen=I.gen/nrow(int_data.mat.gen)) #26.18
+(I.plants.gen=I.gen/ncol(int_data.mat.gen)) #3.40
+```
+
+## Plant at species level
+
+```{r adj.mat.spp, include=FALSE}
+# Graph from edge list
+int_data_sp<- igraph::graph.data.frame(el_int_data.sp[,1:2], directed=FALSE)
+V(int_data_sp)$type <- V(int_data_sp)$name %in% el_int_data.sp[,1]
+is.bipartite(int_data_sp)
+
+int_data.mat.sp <- igraph::as_adjacency_matrix(int_data_sp, type="both", names=T, sparse=F)
+
+int_data.mat.sp <- igraph::as_adjacency_matrix(int_data_sp, type="both", names=T, sparse=F)
+
+# Subset the adjacency matrix: primates as columns, plants as rows
+int_data.mat.sp<- data.frame(int_data.mat.sp[1:39,40:1003])
+#write.csv(int_data.mat.sp, file= "interactions_sp.csv")
+#Average number of interactions per species
+(I.sp=sum(int_data.mat.sp!=0)) #Total number of interactions = 1632
+(I.animals.sp=I.sp/nrow(int_data.mat.sp)) #41.84
+(I.plants.sp=I.sp/ncol(int_data.mat.sp)) #1.69
+
+```
+
+
+# Load trees
+
+```{r load.trees, echo=TRUE}
+
+prim_tree <- ape::read.nexus("./filtered_prim_tree.nex")
+
+plant_tree.sp <- ape::read.nexus("./filtered_plant_tree_sp.nex")
+
+plant_tree.gen <- ape::read.nexus("./filtered_plant_tree_gen.nex")
+
+```
+
+
+
+# Filtering interactions
+
+## Genus level
+```{r filter.genus}
+interactions<-int_data.mat.gen
+filtered_interactions.gen<-interactions[which(rownames(interactions) %in%
+prim_tree$tip.label), which(colnames(interactions) %in%
+plant_tree.gen$tip.label)]
+
+filtered_prim_tree<-drop.tip(prim_tree, setdiff(prim_tree$tip.label,
+rownames(filtered_interactions.gen)))
+plot.phylo(filtered_prim_tree,  cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_prim_tree, file="filtered_prim_tree.nex")
+
+filtered_plant_tree.gen<-drop.tip(plant_tree.gen, setdiff(plant_tree.gen$tip.label,
+colnames(filtered_interactions.gen)))
+plot.phylo(filtered_plant_tree.gen, cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_plant_tree, file="filtered_plant_tree.nex")
+```
+
+## Species level
+```{r filter.species}
+
+interactions.sp<-int_data.mat.sp
+filtered_interactions.sp<-interactions.sp[which(rownames(interactions.sp) %in%
+prim_tree$tip.label), which(colnames(interactions.sp) %in%
+plant_tree.sp$tip.label)]
+
+filtered_prim_tree<-drop.tip(prim_tree, setdiff(prim_tree$tip.label,
+rownames(filtered_interactions.sp)))
+plot.phylo(filtered_prim_tree,  cex = 0.6, edge.width = 0.5, type= "fan")
+#write.nexus(filtered_prim_tree.sp, file="filtered_prim_tree_sp.nex")
+
+filtered_plant_tree.sp<-drop.tip(plant_tree.sp, setdiff(plant_tree.sp$tip.label,
+colnames(filtered_interactions.sp)))
+plot.phylo(filtered_plant_tree.sp, cex = 0.6, edge.width = 0.5, type= "fan")
+#write.nexus(filtered_plant_tree.sp, file="filtered_plant_tree_sp.nex")
+```
+
+# Perform PACo analysis
+
+To perform PACo, the symmetric argument will be set to TRUE.
+This means that both phylogenies (frugivores and plants) will be standardised prior to super-imposition resulting in the best-fit of the superimposition being independent of both phylogenies.
+
+Also, as seed dispersal is a more diffuse ecological system (such as pollination), we will implement a more constrained null model (method=‘quasiswap’), where the number of interactions is conserved for each species and accordingly in the network as a whole.
+
+# Genus level
+```{r paco.genus}
+D.gen<-prepare_paco_data(
+      cophenetic(filtered_prim_tree),
+      cophenetic(filtered_plant_tree.gen), 
+      as.matrix(filtered_interactions.gen)
+      )
+
+# cophylogenetic analysis
+
+D.gen <- add_pcoord(D.gen)
+D.gen <- PACo(D.gen, nperm=30, method='quasiswap', symmetric=TRUE) #set nperm to 1000
+D.gen$gof #p = 0, ss = 0.9842524, n = 1000
+
+# investigate the contribution of individual links
+res.gen <- residuals_paco(D.gen$proc)
+
+```
+
+## Species level
+```{r paco.sp}
+
+D.sp<-prepare_paco_data(
+      cophenetic(filtered_prim_tree),
+      cophenetic(filtered_plant_tree.sp), 
+      as.matrix(filtered_interactions.sp)
+      )
+
+# cophylogenetic analysis
+D.sp <- add_pcoord(D.sp)
+
+# Pull vectors out of object D for PACo to read
+X<-D.sp$H_PCo
+Y<-D.sp$P_PCo
+
+# cophylogenetic analysis
+D.sp <- PACo(D.sp, nperm=20, method='quasiswap', symmetric=TRUE) #set nperm to 1000
+#Check for deep errors produced by complex numbers. Use file 'coordpcoa2.r' - correction by Miguel
+
+D.sp$gof #p = 0, ss = 0.97869, n = 1000
+
+res.sp=read.table("./ele13918-sup-0002-TableS9.txt", 
+             na="NA", sep="\t", dec=".", header= TRUE) #supp material
+
+```
+
+
+# Visualize partitioned residual contribuiton
+
+## Genus level
+```{r resid.cont.gen}
+
+# to analyse the links splitting the interactions based on the plot
+#first, selecting the most frugivorous)
+cophy_int_fru <- c(grep('Ateles_belzebuth', names(res.gen)), 
+               grep('Ateles_geoffroyi', names(res.gen)),
+               grep('Ateles_paniscus', names(res.gen)),
+               grep('Brachyteles_arachnoides', names(res.gen)),
+               grep('Brachyteles_hypoxanthus', names(res.gen)),
+               grep('Lagothrix_lagotricha', names(res.gen)),
+               grep('Lagothrix_cana', names(res.gen)),
+               grep('Lagothrix_lugens', names(res.gen))
+               )
+#first, selecting the most folivorous
+cophy_int_fol <- c(grep('Alouatta_belzebul', names(res.gen)), 
+               grep('Alouatta_caraya', names(res.gen)), 
+               grep('Alouatta_guariba', names(res.gen)), 
+               grep('Alouatta_palliata', names(res.gen)), 
+               grep('Alouatta_pigra', names(res.gen)), 
+               grep('Alouatta_seniculus', names(res.gen))
+               )
+
+#second, selecting the 'insectivorous'
+cophy_int_ins <- c( 
+               grep('Leontopithecus_caissara', names(res.gen)), 
+               grep('Leontopithecus_chrysomelas', names(res.gen)),
+               grep('Leontopithecus_chrysopygus', names(res.gen)),
+               grep('Leontopithecus_rosalia', names(res.gen)),
+               grep('Saguinus_fuscicollis', names(res.gen)),
+               grep('Saguinus_geoffroyi', names(res.gen)),
+               grep('Saguinus_midas', names(res.gen)),
+               grep('Saguinus_mystax', names(res.gen)),
+              grep('Callithrix_aurita', names(res.gen)),
+	            grep('Callithrix_flaviceps', names(res.gen)),
+	          	grep('Callithrix_geoffroyi', names(res.gen)),
+	          	grep('Callithrix_jacchus', names(res.gen)),
+	          	grep('Callithrix_penicillata',names(res.gen))
+                )
+#second, selecting the Omnivorous               
+cophy_int_omn <- c(grep('Sapajus_apella', names(res.gen)), 
+               grep('Sapajus_flavius', names(res.gen)), 
+               grep('Sapajus_libidinosus', names(res.gen)), 
+               grep('Sapajus_nigritus', names(res.gen)), 
+               grep('Sapajus_robustus', names(res.gen)), 
+               grep('Sapajus_xanthosternos', names(res.gen)), 
+               grep('Cebus_capucinus', names(res.gen)) 
+               )
+
+#Finally, selecting Pitheciidae (the seed predators)
+cophy_int_pre <- c(grep('Cacajao_melanocephalus', names(res.gen)), 
+               grep('Callicebus_coimbrai', names(res.gen)), 
+               grep('Callicebus_melanochir', names(res.gen)), 
+               grep('Callicebus_nigrifrons', names(res.gen)), 
+               grep('Chiropotes_chiropotes', names(res.gen))
+                )
+
+
+# if need to remove the any interaction 
+####cophy_int <- cophy_int[-grep('Anthidium', names(res[cophy_int]))]
+
+# Visualise residuals of each primate family and the total
+cophy_fru <- res.gen[cophy_int_fru]
+cophy_fol <- res.gen[cophy_int_fol]
+cophy_ins <- res.gen[cophy_int_ins]
+cophy_omn <- res.gen[cophy_int_omn]
+cophy_pre <- res.gen[cophy_int_pre]
+
+# Save as data frame (ggplot do not run if it is not a data frame)
+cophy_fru_dat <- as.data.frame(cophy_fru) 
+cophy_fol_dat <- as.data.frame(cophy_fol) 
+cophy_ins_dat <- as.data.frame(cophy_ins) 
+cophy_omn_dat <- as.data.frame(cophy_omn)
+cophy_pre_dat <- as.data.frame(cophy_pre) 
+  
+
+
+# visualise the difference with a box and whisker plot
+
+dat<- rbind(
+        data.frame(cophy=cophy_fru, level='high', diet='fru'), 
+        data.frame(cophy=cophy_fol, level='rest',diet='fol'),
+        data.frame(cophy=cophy_omn,level='rest', diet='omn'),
+        data.frame(cophy=cophy_ins,level='rest', diet='ins'),
+        data.frame(cophy=cophy_pre, level='rest',diet='pre'))
+
+ ggplot(dat, aes(x=diet, y=cophy))+
+  geom_boxplot(alpha=0.85, fill=c('white'), outlier.color ='white')+
+  geom_jitter(data=dat, aes(x=diet, y=cophy, col=diet), alpha=0.4)+
+  scale_fill_brewer(palette='Paired')+
+  scale_x_discrete(labels=c('Frugivore','Folivore', 'Omnivore', 'Insectivore', 'Seed Predator'))+
+  ylab('Contribution to cophylogenetic signal')+
+  theme_bw()+
+  theme(
+    axis.title.x=element_blank(),
+    panel.grid=element_blank(),
+    legend.position='none',
+    axis.text.x=element_text(size=12),
+    axis.title.y=element_text(size=14)
+  )
+ 
+
+ 
+ 
+```
+
+## Species level
+```{r resid.cont.sp}
+
+# to analyse the links splitting the interactions based on the plot
+#first, selecting the most frugivorous)
+cophy_int_fru <- res.sp %>%
+  filter(primate_spp %in% c('Ateles_belzebuth', 
+               'Ateles_geoffroyi',
+               'Ateles_paniscus',
+               'Brachyteles_arachnoides',
+               'Brachyteles_hypoxanthus',
+               'Lagothrix_lagotricha',
+               'Lagothrix_cana',
+               'Lagothrix_lugens'
+               ))
+
+#first, selecting the most folivorous
+cophy_int_fol <- res.sp %>%
+  filter(primate_spp %in% c('Alouatta_belzebul',
+                            'Alouatta_caraya',
+                            'Alouatta_guariba',
+                            'Alouatta_palliata',
+                            'Alouatta_pigra', 
+                            'Alouatta_seniculus'))
+
+#second, selecting the 'insectivorous'
+cophy_int_ins <- res.sp %>%
+  filter(primate_spp %in% c('Leontopithecus_caissara',  
+               'Leontopithecus_chrysomelas', 
+               'Leontopithecus_chrysopygus', 
+               'Leontopithecus_rosalia', 
+               'Saguinus_fuscicollis', 
+               'Saguinus_geoffroyi', 
+               'Saguinus_midas', 
+               'Saguinus_mystax', 
+              'Callithrix_aurita', 
+	            'Callithrix_flaviceps', 
+	          	'Callithrix_geoffroyi', 
+	          	'Callithrix_jacchus', 
+	          	'Callithrix_penicillata')
+                )
+#second, selecting the Omnivorous               
+cophy_int_omn <- res.sp %>%
+  filter(primate_spp %in% c('Sapajus_apella',  
+               'Sapajus_flavius',  
+               'Sapajus_libidinosus',  
+               'Sapajus_nigritus',  
+               'Sapajus_robustus',  
+               'Sapajus_xanthosternos',  
+               'Cebus_capucinus') 
+               )
+
+#Finally, selecting Pitheciidae (the seed predators)
+cophy_int_pre <- res.sp %>%
+  filter(primate_spp %in% c('Cacajao_melanocephalus',  
+               'Callicebus_coimbrai',  
+               'Callicebus_melanochir',  
+               'Callicebus_nigrifrons',  
+               'Chiropotes_chiropotes')
+                )
+
+
+# Save as data frame (ggplot do not run if it is not a data frame)
+cophy_fru_dat <- as.data.frame(cophy_int_fru) 
+cophy_fol_dat <- as.data.frame(cophy_int_fru) 
+cophy_ins_dat <- as.data.frame(cophy_int_fru) 
+cophy_omn_dat <- as.data.frame(cophy_int_fru)
+cophy_pre_dat <- as.data.frame(cophy_int_fru) 
+  
+
+
+# visualise the difference with a box and whisker plot
+
+dat<- rbind(
+        data.frame(cophy=cophy_fru, level='high', diet='fru'), 
+        data.frame(cophy=cophy_fol, level='rest',diet='fol'),
+        data.frame(cophy=cophy_omn,level='rest', diet='omn'),
+        data.frame(cophy=cophy_ins,level='rest', diet='ins'),
+        data.frame(cophy=cophy_pre, level='rest',diet='pre'))
+
+ ggplot(dat, aes(x=diet, y=cophy))+
+  geom_boxplot(alpha=0.85, fill=c('white'), outlier.color ='white')+
+  geom_jitter(data=dat, aes(x=diet, y=cophy, col=diet), alpha=0.4)+
+  scale_fill_brewer(palette='Paired')+
+  scale_x_discrete(labels=c('Frugivore','Folivore', 'Omnivore', 'Insectivore', 'Seed Predator'))+
+  ylab('Contribution to cophylogenetic signal')+
+  theme_bw()+
+  theme(
+    axis.title.x=element_blank(),
+    panel.grid=element_blank(),
+    legend.position='none',
+    axis.text.x=element_text(size=12),
+    axis.title.y=element_text(size=14)
+  )
+ 
+
+ 
+ 
+```
+
+
+# Explore sampling effects
+Better studied monkeys are those who contribute more to the cophylogenetic signal?
+
+## Species level
+```{r sample.effect}
+
+sample<-read.table("./ref_interact2.txt", header= TRUE)
+
+ref_sites<-read.table("./ref_sites.txt", 
+                   na="NA", sep="\t", dec=".", header= TRUE)
+
+sample_refs=left_join (sample,ref_sites, by='ref')
+sample_refs_sp=sample_refs [!duplicated(sample_refs[c(1,2,3)]),]
+sample<-read.table("./effort.txt", 
+                   na="NA", sep="\t", header= TRUE)
+
+
+#First, calculate the average Procrustes res.spidual across plant genus
+res.spiduals=as.data.frame(res.sp)
+pl_res.spid <- as.data.frame(res.spiduals[,c(2,3)])
+
+library(plyr)
+pl_res.sp_mean = ddply(pl_res.spid, .(plant_spp),transform, mean_res.sp = mean(res))
+#Then, calculate the average Procrustes residual across primate species
+pr_res.spid <- as.data.frame(res.spiduals[,c(1,3)])
+pr_res.sp_mean = plyr::ddply(pr_res.spid,.(primate_spp),transform,mean_res.sp = mean(res))
+
+names(pr_res.sp_mean)[names(pr_res.sp_mean) == "primate_spp"] <- "prim"
+names(pl_res.sp_mean)[names(pr_res.sp_mean) == "plant_spp"] <- "plant"
+
+#Join average Procrustes residual for each primate species with sample effort
+sample_refs=left_join (pr_res.sp_mean,sample, by='prim')
+sample_refs=sample_refs[,c(1,3,4)]
+sample_refs=unique(sample_refs)
+
+
+
+p=ggplot(sample_refs, aes(x=effort_h, y=mean_res.sp))+
+  geom_smooth(method=lm, 
+              color="darkred", fill="darkred", se=TRUE, alpha=0.4) +
+  ylab('Average Procrustes res.spidual')+
+  xlab('Sampling effort (h)')+
+  theme_bw()+
+  theme(
+    panel.grid=element_blank(),
+    legend.position='none',
+    axis.title.x=element_text(size=14),
+    axis.title.y=element_text(size=14)
+  )
+p
+
+```
+
+
+
+# Explore 'Local' patterns
+
+## Subset data according to region 
+
+```{r subset.region}
+forest_interact=read.table("./interaction_forest.txt", 
+             na="NA", sep="\t", dec=".", header= TRUE)
+
+
+#subset by region
+at_fo<- forest_interact %>%             
+        dplyr::filter(forest=="at_fo")
+
+am_fo<- forest_interact %>%             
+        dplyr::filter(forest=="am_fo")
+
+me_fo<- forest_interact %>%             
+        dplyr::filter(forest=="me_fo")
+
+```
+
+## Edge lists to interaction matrices
+
+```{r edge.to.int.local.spp, include=FALSE}
+
+###Interaction datasets.
+
+#ATLANTIC FOREST
+at_fo %>%                      # primate: 22 species
+  dplyr::select(primate) %>%
+  group_by(primate) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+at_fo %>%                      # Plants: 382 plant
+  dplyr::select(plant) %>%
+  group_by(plant) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+#AMAZONIA
+am_fo %>%                      # primate: 12 species
+  dplyr::select(primate) %>%
+  group_by(primate) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+am_fo %>%                      # Plants: 463 plant
+  dplyr::select(plant) %>%
+  group_by(plant) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+
+#MESOAMERICA FOREST
+me_fo %>%                      # primate: 6 species
+  dplyr::select(primate) %>%
+  group_by(primate) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+me_fo %>%                      # Plants: 212 plant
+  dplyr::select(plant) %>%
+  group_by(plant) %>%
+  dplyr::mutate(count = n()) %>%
+  unique()
+
+### List of distinct pairwise interactions (edge list).
+el_at_fo.sp<- at_fo %>%
+  dplyr::select(primate,plant) %>%
+  dplyr::filter(!is.na(primate)) %>%
+  dplyr::group_by(primate,plant) %>%
+  dplyr::summarise(n_distinct(primate))
+
+el_am_fo.sp<- am_fo %>%
+  dplyr::select(primate,plant) %>%
+  dplyr::filter(!is.na(primate)) %>%
+  dplyr::group_by(primate,plant) %>%
+  dplyr::summarise(n_distinct(primate))
+
+el_me_fo.sp<- me_fo %>%
+  dplyr::select(primate,plant) %>%
+  dplyr::filter(!is.na(primate)) %>%
+  dplyr::group_by(primate,plant) %>%
+  dplyr::summarise(n_distinct(primate))
+
+
+### Create graph objects
+# Graph from edge list
+at_fo_g.sp<- igraph::graph.data.frame(el_at_fo.sp[,1:2], directed=FALSE)
+V(at_fo_g.sp)$type <- V(at_fo_g.sp)$name %in% el_at_fo.sp[,1]
+
+am_fo_g.sp<- igraph::graph.data.frame(el_am_fo.sp[,1:2], directed=FALSE)
+V(am_fo_g.sp)$type <- V(am_fo_g.sp)$name %in% el_am_fo.sp[,1]
+
+me_fo_g.sp<- igraph::graph.data.frame(el_me_fo.sp[,1:2], directed=FALSE)
+V(me_fo_g.sp)$type <- V(me_fo_g.sp)$name %in% el_me_fo.sp[,1]
+```
+
+
+
+## Create djacency matrices
+
+```{r adj.mat.local.sp, include=FALSE}
+at_fo.mat.sp <- igraph::as_adjacency_matrix(at_fo_g.sp, type="both", names=T, sparse=F)
+# Subset the adjacency matrix: primates as columns, plants as rows
+at_fo.mat.sp<- data.frame(at_fo.mat.sp[1:22,23:404])
+
+am_fo.mat.sp <- igraph::as_adjacency_matrix(am_fo_g.sp, type="both", names=T, sparse=F)
+# Subset the adjacency matrix: primates as columns, plants as rows
+am_fo.mat.sp<- data.frame(am_fo.mat.sp[1:12,13:475])
+
+me_fo.mat.sp <- igraph::as_adjacency_matrix(me_fo_g.sp, type="both", names=T, sparse=F)
+# Subset the adjacency matrix: primates as columns, plants as rows
+me_fo.mat.sp<- data.frame(me_fo.mat.sp[1:5,6:202])
+
+
+```
+
+### 1.16.c Filtering trees and interactions
+
+```{r filter.tree.local.sp}
+
+###ATLANTIC FOREST
+#interactions<-int_data.mat.sp
+filt_interact_at_fo.sp<-at_fo.mat.sp[which(rownames(at_fo.mat.sp) %in%
+filtered_prim_tree$tip.label), which(colnames(at_fo.mat.sp) %in%
+filtered_plant_tree.sp$tip.label)]
+
+filt_prim_tree_at_fo.sp<-drop.tip(filtered_prim_tree, setdiff(filtered_prim_tree$tip.label,
+rownames(filt_interact_at_fo.sp)))
+plot.phylo(filt_prim_tree_at_fo.sp,  cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_prim_tree.sp, file="filt_prim_tree_at_fo.nex")
+
+filt_pl_tree_at_fo.sp<-drop.tip(filtered_plant_tree.sp, setdiff(filtered_plant_tree.sp$tip.label,
+colnames(filt_interact_at_fo.sp)))
+plot.phylo(filt_pl_tree_at_fo.sp, cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_plant_tree.sp, file="filt_interact_at_fo.nex")
+
+###AMAZON FOREST
+#interactions<-int_data.mat.sp
+filt_interact_am_fo.sp<-am_fo.mat.sp[which(rownames(am_fo.mat.sp) %in%
+filtered_prim_tree$tip.label), which(colnames(am_fo.mat.sp) %in%
+filtered_plant_tree.sp$tip.label)]
+
+filt_prim_tree_am_fo.sp<-drop.tip(filtered_prim_tree, setdiff(filtered_prim_tree$tip.label,
+rownames(filt_interact_am_fo.sp)))
+#filtering for plant species with only 1 interaction 
+filt_prim_tree_am_fo.sp<-drop.tip(filt_prim_tree_am_fo.sp, "Alouatta_palliata" )
+filt_prim_tree_am_fo.sp<-drop.tip(filt_prim_tree_am_fo.sp, "Saimiri_ustus" )
+filt_prim_tree_am_fo.sp<-drop.tip(filt_prim_tree_am_fo.sp, "Lagothrix_cana")
+plot.phylo(filt_prim_tree_am_fo.sp,  cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_prim_tree.sp, file="filt_prim_tree_am_fo.nex")
+
+filt_pl_tree_am_fo.sp<-drop.tip(filtered_plant_tree.sp, setdiff(filtered_plant_tree.sp$tip.label,
+colnames(filt_interact_am_fo.sp)))
+plot.phylo(filt_pl_tree_am_fo.sp, cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_plant_tree.sp, file="filt_interact_am_fo.nex")
+
+
+###MESOAMERICAN FOREST
+#interactions<-int_data.mat.sp
+filt_interact_me_fo.sp<-me_fo.mat.sp[which(rownames(me_fo.mat.sp) %in%
+filtered_prim_tree$tip.label), which(colnames(me_fo.mat.sp) %in%
+filtered_plant_tree.sp$tip.label)]
+
+filt_prim_tree_me_fo.sp<-drop.tip(filtered_prim_tree, setdiff(filtered_prim_tree$tip.label,
+rownames(filt_interact_me_fo.sp)))
+plot.phylo(filt_prim_tree_me_fo.sp,  cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_prim_tree.sp, file="filt_prim_tree_me_fo.sp.nex")
+
+filt_pl_tree_me_fo.sp<-drop.tip(filtered_plant_tree.sp, setdiff(filtered_plant_tree.sp$tip.label,
+colnames(filt_interact_me_fo.sp)))
+plot.phylo(filt_pl_tree_me_fo.sp, cex = 0.6, edge.width = 0.5)
+##write.nexus(filtered_plant_tree.sp, file="filt_interact_me_fo.sp.nex")
+
+```
+
+# Perform PACo analysis - local
+
+## ATLANTIC FOREST
+
+### Species Level 
+
+```{r paco.atlantic.forest.sp}
+# start the paco procedure
+filt_interact_at_fo.sp<-filt_interact_at_fo.sp[filt_prim_tree_at_fo.sp$tip.label,
+filt_pl_tree_at_fo.sp$tip.label]
+
+D_at.sp<-prepare_paco_data(
+      cophenetic(filt_prim_tree_at_fo.sp),
+      cophenetic(filt_pl_tree_at_fo.sp), 
+      filt_interact_at_fo.sp
+      )
+D_at.sp <- add_pcoord(D_at.sp)
+
+# cophylogenetic analysis
+X<-D$H_PCo
+Y<-D$P_PCo
+procrustes(X,Y)
+D_at.sp <- PACo(D_at.sp, nperm=1000, method='quasiswap', symmetric=TRUE) 
+
+D_at.sp$gof #p=p-value >> 0, $ss = sum of residuals >> 0.982, $n=permutation number >>1000
+
+# investigate the contribution of individual links
+res_at.sp <- residuals_paco(D_at.sp$proc)
+sort(res_at.sp,decreasing=TRUE)
+
+```
+
+Residual contribution visualization
+
+```{r resid.contribut.at.fo.sp}
+
+
+# to analyse the residuals based on all primates
+cophy_at.sp=as.data.frame(res_at.sp)
+
+# to analyse the links splitting the interactions based on the plot
+#first, selecting the most frugivorous)
+cophy_int_fru_at.sp <- c(grep('Brachyteles_arachnoides', names(res_at.sp)),
+               grep('Brachyteles_hypoxanthus', names(res_at.sp))
+               )
+               
+#first, selecting the most folivorous
+cophy_int_fol_at.sp <- c(grep('Alouatta_belzebul', names(res_at.sp)), 
+               grep('Alouatta_caraya', names(res_at.sp)), 
+               grep('Alouatta_guariba', names(res_at.sp)), 
+               grep('Alouatta_palliata', names(res_at.sp)), 
+               grep('Alouatta_pigra', names(res_at.sp)), 
+               grep('Alouatta_seniculus', names(res_at.sp))
+               )
+
+#second, selecting the 'insectivorous'
+cophy_int_ins_at.sp <- c( 
+               grep('Leontopithecus_caissara', names(res_at.sp)), 
+               grep('Leontopithecus_chrysomelas', names(res_at.sp)),
+               grep('Leontopithecus_chrysopygus', names(res_at.sp)),
+               grep('Leontopithecus_rosalia', names(res_at.sp)),
+               grep('Callithrix_aurita', names(res_at.sp)),
+	            grep('Callithrix_flaviceps', names(res_at.sp)),
+		grep('Callithrix_geoffroyi', names(res_at.sp)),
+		grep('Callithrix_jacchus', names(res_at.sp)),
+		grep('Callithrix_penicillata',names(res_at.sp))
+                )
+#second, selecting the Omnivorous               
+cophy_int_omn_at.sp <- c(grep('Sapajus_apella', names(res_at.sp)), 
+               grep('Sapajus_flavius', names(res_at.sp)), 
+               grep('Sapajus_libidinosus', names(res_at.sp)), 
+               grep('Sapajus_nigritus', names(res_at.sp)), 
+               grep('Sapajus_robustus', names(res_at.sp)), 
+               grep('Sapajus_xanthosternos', names(res_at.sp)) 
+               )
+
+#Finally, selecting Pitheciidae (the seed predators)
+cophy_int_pre_at.sp <- c(grep('Cacajao_melanocephalus', names(res_at.sp)), 
+               grep('Callicebus_coimbrai', names(res_at.sp)), 
+               grep('Callicebus_melanochir', names(res_at.sp)), 
+               grep('Callicebus_nigrifrons', names(res_at.sp)), 
+               grep('Chiropotes_chiropotes', names(res_at.sp))
+                )
+
+# Visualise residuals of each primate family and the total
+cophy_fru_at.sp <- res_at.sp[cophy_int_fru_at.sp]
+cophy_fol_at.sp <- res_at.sp[cophy_int_fol_at.sp]
+cophy_ins_at.sp <- res_at.sp[cophy_int_ins_at.sp]
+cophy_omn_at.sp <- res_at.sp[cophy_int_omn_at.sp]
+cophy_pre_at.sp <- res_at.sp[cophy_int_pre_at.sp]
+   
+dat_at.sp<- rbind(
+        data.frame(cophy=cophy_fru_at.sp,  diet='1'), 
+        data.frame(cophy=cophy_fol_at.sp, diet='2'),
+        data.frame(cophy=cophy_omn_at.sp, diet='3'),
+        data.frame(cophy=cophy_ins_at.sp, diet='4'),
+        data.frame(cophy=cophy_pre_at.sp, diet='5'))
+
+ ggplot(dat_at.sp, aes(x=diet, y=cophy))+
+  geom_boxplot(alpha=0.85, fill=c('white'), outlier.color ='white')+
+  geom_jitter(data=dat_at.sp, aes(x=diet, y=cophy, col=diet), alpha=0.4)+
+  scale_fill_brewer(palette='Paired')+
+  scale_x_discrete(labels=c('Frugivore','Folivore', 'Omnivore', 'Insectivore', 'Seed Predator'))+
+  ylab('Contribution to cophylogenetic signal')+
+  theme_bw()+
+  theme(
+    axis.title.x=element_blank(),
+    panel.grid=element_blank(),
+    legend.position='none',
+    axis.text.x=element_text(size=12),
+    axis.title.y=element_text(size=14)
+  )
+```
+
+## AMAZON FOREST
+
+### Species Level 
+
+```{r paco.amazon.forest.sp}
+# start the paco procedure
+filt_interact_am_fo.sp<-filt_interact_am_fo.sp[filt_prim_tree_am_fo.sp$tip.label,
+filt_pl_tree_am_fo.sp$tip.label]
+
+D_am.sp<-prepare_paco_data(
+      cophenetic(filt_prim_tree_am_fo.sp),
+      cophenetic(filt_pl_tree_am_fo.sp), 
+      filt_interact_am_fo.sp
+      )
+D_am.sp <- add_pcoord(D_am.sp)
+
+# cophylogenetic analysis
+D_am.sp <- PACo(D_am.sp, nperm=1000, method='quasiswap', symmetric=TRUE) 
+
+D_am.sp$gof #p=p-value >> 0, $ss = sum of residuals >> 0.982, $n=permutation number >>1000
+
+# investigate the contribution of individual links
+res_am.sp <- residuals_paco(D_am.sp$proc)
+sort(res_am.sp,decreasing=TRUE)
+
+
+
+
+```
+
+####Residual contribution visualization
+
+```{r resid.contribut.am.fo.sp}
+
+
+# to analyse the residuals based on all primates
+cophy_am.sp=as.data.frame(res_am.sp)
+
+# to analyse the links splitting the interactions based on the plot
+#first, selecting the most frugivorous)
+cophy_int_fru_am.sp <- c(grep('Ateles_belzebuth', names(res_am.sp)), 
+               grep('Ateles_geoffroyi', names(res_am.sp)),
+               grep('Ateles_paniscus', names(res_am.sp)),
+               grep('Brachyteles_arachnoides', names(res_am.sp)),
+               grep('Brachyteles_hypoxanthus', names(res_am.sp)),
+               grep('Lagothrix_lagotricha', names(res_am.sp)),
+               grep('Lagothrix_cana', names(res_am.sp)),
+               grep('Lagothrix_lugens', names(res_am.sp))
+               )
+#first, selecting the most folivorous
+cophy_int_fol_am.sp <- c(grep('Alouatta_belzebul', names(res_am.sp)), 
+               grep('Alouatta_caraya', names(res_am.sp)), 
+               grep('Alouatta_guariba', names(res_am.sp)), 
+               grep('Alouatta_palliata', names(res_am.sp)), 
+               grep('Alouatta_pigra', names(res_am.sp)), 
+               grep('Alouatta_seniculus', names(res_am.sp))
+               )
+
+#second, selecting the 'insectivorous'
+cophy_int_ins_am.sp <- c( 
+               grep('Leontopithecus_caissara', names(res_am.sp)), 
+               grep('Leontopithecus_chrysomelas', names(res_am.sp)),
+               grep('Leontopithecus_chrysopygus', names(res_am.sp)),
+               grep('Leontopithecus_rosalia', names(res_am.sp)),
+               grep('Saguinus_fuscicollis', names(res_am.sp)),
+               grep('Saguinus_geoffroyi', names(res_am.sp)),
+               grep('Saguinus_midas', names(res_am.sp)),
+               grep('Saguinus_mystax', names(res_am.sp))
+                )
+#second, selecting the Omnivorous               
+cophy_int_omn_am.sp <- c(grep('Sapajus_apella', names(res_am.sp)), 
+               grep('Sapajus_flavius', names(res_am.sp)), 
+               grep('Sapajus_libidinosus', names(res_am.sp)), 
+               grep('Sapajus_nigritus', names(res_am.sp)), 
+               grep('Sapajus_robustus', names(res_am.sp)), 
+               grep('Sapajus_xanthosternos', names(res_am.sp)), 
+               grep('Cebus_capucinus', names(res_am.sp)) 
+               )
+
+#Finally, selecting Pitheciidae (the seed predators)
+cophy_int_pre_am.sp <- c(grep('Cacajao_melanocephalus', names(res_am.sp)), 
+               grep('Callicebus_coimbrai', names(res_am.sp)), 
+               grep('Callicebus_melanochir', names(res_am.sp)), 
+               grep('Callicebus_nigrifrons', names(res_am.sp)), 
+               grep('Chiropotes_chiropotes', names(res_am.sp))
+                )
+
+# Visualise residuals of each primate family and the total
+cophy_fru_am.sp <- res_am.sp[cophy_int_fru_am.sp]
+cophy_fol_am.sp <- res_am.sp[cophy_int_fol_am.sp]
+cophy_ins_am.sp <- res_am.sp[cophy_int_ins_am.sp]
+cophy_omn_am.sp <- res_am.sp[cophy_int_omn_am.sp]
+cophy_pre_am.sp <- res_am.sp[cophy_int_pre_am.sp]
+   
+dat_am.sp<- rbind(
+        data.frame(cophy=cophy_fru_am.sp, diet='1'), 
+        data.frame(cophy=cophy_fol_am.sp, diet='2'),
+        data.frame(cophy=cophy_ins_am.sp, diet='3'),
+        data.frame(cophy=cophy_pre_am.sp, diet='4'))
+
+ ggplot(dat_am.sp, aes(x=diet, y=cophy))+
+  geom_boxplot(alpha=0.85, fill=c('white'), outlier.color ='white')+
+  geom_jitter(data=dat_am.sp, aes(x=diet, y=cophy, col=diet), alpha=0.4)+
+    scale_colour_manual(values=c("#F8766D", "#93AA00", "#00B0F6","#C77CFF"))+
+  scale_x_discrete(labels=c('Frugivore','Folivore', 'Insectivore', 'Seed Predator'))+
+  ylab('Contribution to cophylogenetic signal')+
+  theme_bw()+
+  theme(
+    axis.title.x=element_blank(),
+    panel.grid=element_blank(),
+    legend.position='none',
+    axis.text.x=element_text(size=12),
+    axis.title.y=element_text(size=14)
+  )
+```
+
+###MESOAMERICAN FOREST
+
+#### Species Level 
+
+```{r paco.mesoam.forest.sp}
+# start the paco procedure
+filt_interact_me_fo.sp<-filt_interact_me_fo.sp[filt_prim_tree_me_fo.sp$tip.label,
+filt_pl_tree_me_fo.sp$tip.label]
+
+D_me.sp<-prepare_paco_data(
+      cophenetic(filt_prim_tree_me_fo.sp),
+      cophenetic(filt_pl_tree_me_fo.sp), 
+      filt_interact_me_fo.sp
+      )
+D_me.sp <- add_pcoord(D_me.sp)
+
+# cophylogenetic analysis
+D_me.sp <- PACo(D_me.sp, nperm=1000, method='quasiswap', symmetric=TRUE) 
+
+D_me.sp$gof #p=p-value >> 0, $ss = sum of residuals >> 0.982, $n=permutation number >>1000
+
+# investigate the contribution of individual links
+res_me.sp <- residuals_paco(D_me.sp$proc)
+sort(res_me.sp,decreasing=TRUE)
+#write.csv(res_me.sp, file="int_resid_me.sp.csv")
+
+
+
+```
+
+####Residual contribution visualization
+
+```{r resid.contribut.me.fo.sp}
+
+
+# to analyse the residuals based on all primates
+cophy_me.sp=as.data.frame(res_me.sp)
+
+# to analyse the links splitting the interactions based on the plot
+#first, selecting the most frugivorous)
+cophy_int_fru_me.sp <- c(grep('Ateles_belzebuth', names(res_me.sp)), 
+               grep('Ateles_geoffroyi', names(res_me.sp)),
+               grep('Ateles_paniscus', names(res_me.sp)),
+               grep('Brachyteles_arachnoides', names(res_me.sp)),
+               grep('Brachyteles_hypoxanthus', names(res_me.sp)),
+               grep('Lagothrix_lagotricha', names(res_me.sp)),
+               grep('Lagothrix_cana', names(res_me.sp)),
+               grep('Lagothrix_lugens', names(res_me.sp))
+               )
+#first, selecting the most folivorous
+cophy_int_fol_me.sp <- c(grep('Alouatta_belzebul', names(res_me.sp)), 
+               grep('Alouatta_caraya', names(res_me.sp)), 
+               grep('Alouatta_guariba', names(res_me.sp)), 
+               grep('Alouatta_palliata', names(res_me.sp)), 
+               grep('Alouatta_pigra', names(res_me.sp)), 
+               grep('Alouatta_seniculus', names(res_me.sp))
+               )
+
+#second, selecting the 'insectivorous'
+cophy_int_ins_me.sp <- c( 
+               grep('Leontopithecus_caissara', names(res_me.sp)), 
+               grep('Leontopithecus_chrysomelas', names(res_me.sp)),
+               grep('Leontopithecus_chrysopygus', names(res_me.sp)),
+               grep('Leontopithecus_rosalia', names(res_me.sp)),
+               grep('Saguinus_fuscicollis', names(res_me.sp)),
+               grep('Saguinus_geoffroyi', names(res_me.sp)),
+               grep('Saguinus_midas', names(res_me.sp)),
+               grep('Saguinus_mystax', names(res_me.sp))
+                )
+#second, selecting the Omnivorous               
+cophy_int_omn_me.sp <- c(grep('Sapajus_apella', names(res_me.sp)), 
+               grep('Sapajus_flavius', names(res_me.sp)), 
+               grep('Sapajus_libidinosus', names(res_me.sp)), 
+               grep('Sapajus_nigritus', names(res_me.sp)), 
+               grep('Sapajus_robustus', names(res_me.sp)), 
+               grep('Sapajus_xanthosternos', names(res_me.sp)), 
+               grep('Cebus_capucinus', names(res_me.sp)) 
+               )
+
+
+# Visualise residuals of each primate family and the total
+cophy_fru_me.sp <- res_me.sp[cophy_int_fru_me.sp]
+cophy_fol_me.sp <- res_me.sp[cophy_int_fol_me.sp]
+cophy_ins_me.sp <- res_me.sp[cophy_int_ins_me.sp]
+cophy_omn_me.sp <- res_me.sp[cophy_int_omn_me.sp]
+   
+dat_me.sp<- rbind(
+        data.frame(cophy=cophy_fru_me.sp, level='high', diet='1'), 
+        data.frame(cophy=cophy_fol_me.sp, level='rest',diet='2'),
+        data.frame(cophy=cophy_omn_me.sp,level='rest', diet='3'),
+        data.frame(cophy=cophy_ins_me.sp,level='rest', diet='4'))
+
+ ggplot(dat_me.sp, aes(x=diet, y=cophy))+
+  geom_boxplot(alpha=0.85, fill=c('white'), outlier.color ='white')+
+  geom_jitter(data=dat_me.sp, aes(x=diet, y=cophy, col=diet), alpha=0.4)+
+   scale_colour_manual(values=c("#F8766D", "#A3A500", "#00BF7D", "#00B0F6"))+
+  scale_x_discrete(labels=c('Frugivore','Folivore', 'Omnivore', 'Insectivore'))+
+  ylab('Contribution to cophylogenetic signal')+
+  theme_bw()+
+  theme(
+    axis.title.x=element_blank(),
+    panel.grid=element_blank(),
+    legend.position='none',
+    axis.text.x=element_text(size=12),
+    axis.title.y=element_text(size=14)
+  )
+```
