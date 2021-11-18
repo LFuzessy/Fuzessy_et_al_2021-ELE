@@ -1,5 +1,5 @@
 # Fuzessy_et_al_2021-ELE
-Data and code supporting the results in the Ecology Letters paper DOI: 10.1111/ele.13918:
+Data and code supporting the results in the Ecology Letters paper https://doi.org/10.1111/ele.13918
 
 Title: Phylogenetic congruence between Neotropical primates and plants is driven by frugivory
 
